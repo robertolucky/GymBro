@@ -1,4 +1,3 @@
-import React from 'react';
 import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom';
 import { AnimatePresence } from 'framer-motion';
 import { GymProvider } from './context/GymContext';
@@ -6,6 +5,7 @@ import { BottomNav } from './components/BottomNav';
 import { Exercises } from './pages/Exercises';
 import { Stats } from './pages/Stats';
 import { Settings } from './pages/Settings';
+import { AbsTimer } from './pages/AbsTimer';
 function AnimatedRoutes() {
   const location = useLocation();
   return (
@@ -13,6 +13,7 @@ function AnimatedRoutes() {
       <Routes location={location} key={location.pathname}>
         <Route path="/" element={<Exercises />} />
         <Route path="/stats" element={<Stats />} />
+        <Route path="/abs" element={<AbsTimer />} />
         <Route path="/settings" element={<Settings />} />
       </Routes>
     </AnimatePresence>);

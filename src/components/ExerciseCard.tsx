@@ -1,31 +1,22 @@
-import React from 'react';
-import {
-  Dumbbell,
-  Activity,
-  ArrowUpCircle,
-  ArrowUp,
-  ArrowDown,
-  MoveHorizontal,
-  Minus } from
-'lucide-react';
+import { Dumbbell } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { Exercise, useGym } from '../context/GymContext';
-const iconMap: Record<string, React.ElementType> = {
-  Dumbbell,
-  Activity,
-  ArrowUpCircle,
-  ArrowUp,
-  ArrowDown,
-  MoveHorizontal,
-  Minus
-};
+
 type ExerciseCardProps = {
   exercise: Exercise;
+  sessionsMissed: number;
   onClick: () => void;
 };
-export function ExerciseCard({ exercise, onClick }: ExerciseCardProps) {
+export function ExerciseCard({ exercise, sessionsMissed, onClick }: ExerciseCardProps) {
   const { state } = useGym();
-  const Icon = iconMap[exercise.iconName] || Dumbbell;
+
+  // Gauge: 0 sessions missed = full green, 3+ = full red
+  const MAX_SESSIONS = 3;
+  const fill = Math.max(0, 1 - sessionsMissed / MAX_SESSIONS); // 1.0 → 0.0
+  const gaugeColor =
+    fill > 0.66 ? '#a3e635' :   // lime
+    fill > 0.33 ? '#fb923c' :   // orange
+    '#f87171';                   // red (includes never done)
   // Get latest log for each user
   const getLatestLog = (userId: string) => {
     const userLogs = state.logs.
@@ -46,11 +37,28 @@ export function ExerciseCard({ exercise, onClick }: ExerciseCardProps) {
       
       <div className="flex justify-between items-start mb-2">
         <div className="p-2 bg-zinc-800 rounded-xl text-lime-400">
-          <Icon className="w-5 h-5" />
+          <Dumbbell className="w-5 h-5" />
         </div>
-        <span className="text-[10px] font-bold uppercase tracking-wider bg-zinc-800 text-zinc-400 px-2 py-1 rounded-md">
-          {exercise.muscleGroup}
-        </span>
+        <div className="flex flex-col items-end gap-1">
+          <span className="text-[10px] font-bold uppercase tracking-wider bg-zinc-800 text-zinc-400 px-2 py-1 rounded-md">
+            {exercise.muscleGroup}
+          </span>
+          {/* Freshness gauge: 4 segments */}
+          <div className="flex gap-0.5">
+            {Array.from({ length: MAX_SESSIONS + 1 }).map((_, i) => (
+              <div
+                key={i}
+                className="w-3 h-1.5 rounded-full"
+                style={{
+                  backgroundColor:
+                    i < (MAX_SESSIONS + 1) - sessionsMissed
+                      ? gaugeColor
+                      : '#3f3f46',
+                }}
+              />
+            ))}
+          </div>
+        </div>
       </div>
 
       {exercise.days && exercise.days.length > 0 &&
@@ -70,26 +78,17 @@ export function ExerciseCard({ exercise, onClick }: ExerciseCardProps) {
         {exercise.name}
       </h3>
 
-      <div className="space-y-2 mt-auto">
-        {state.users.map((user) => {
-          const latestLog = getLatestLog(user.id);
-          return (
-            <div
-              key={user.id}
-              className="flex justify-between items-center text-sm">
-              
-              <div className="flex items-center gap-2">
-                <div className={`w-2 h-2 rounded-full ${user.color}`} />
-                <span className="text-zinc-400">{user.name}</span>
-              </div>
-              <span className="text-white font-medium">
-                {latestLog ?
-                `${latestLog.weight}${state.units} × ${latestLog.reps}` :
-                '-'}
-              </span>
-            </div>);
-
-        })}
+      <div className="mt-auto">
+        {(() => {
+          const latestLog = getLatestLog(state.activeUserId);
+          return latestLog ? (
+            <span className="text-white font-bold whitespace-nowrap text-sm">
+              {latestLog.weight}{state.units} × {latestLog.reps} × {latestLog.sets}
+            </span>
+          ) : (
+            <span className="text-zinc-600 text-sm">No logs yet</span>
+          );
+        })()}
       </div>
     </motion.div>);
 

@@ -1,4 +1,6 @@
-import React, { useEffect, useState, createContext, useContext } from 'react';
+import React, { useEffect, useState, createContext, useContext, ReactNode } from 'react';
+import { supabase } from '../supabaseClient';
+
 export type User = {
   id: string;
   name: string;
@@ -6,6 +8,7 @@ export type User = {
   weight: number;
   height: number;
   bodyFat: number;
+  muscleMass: number;
 };
 export type Exercise = {
   id: string;
@@ -20,12 +23,15 @@ export type Log = {
   userId: string;
   weight: number;
   reps: number;
+  sets: number;
   date: string;
 };
 export type BiometricLog = {
   id: string;
   userId: string;
   weight: number;
+  bodyFat: number;
+  muscleMass: number;
   date: string;
 };
 type GymState = {
@@ -42,236 +48,234 @@ type GymContextType = {
   setActiveUser: (id: string) => void;
   updateUser: (id: string, data: Partial<User>) => void;
   addLog: (log: Omit<Log, 'id' | 'date'>) => void;
+  deleteLog: (id: string) => void;
   addBiometricLog: (log: Omit<BiometricLog, 'id' | 'date'>) => void;
   setUnits: (units: 'kg' | 'lbs') => void;
   resetData: () => void;
   addExercise: (exercise: Omit<Exercise, 'id'>) => void;
+  updateExercise: (id: string, data: Partial<Omit<Exercise, 'id'>>) => void;
+  deleteExercise: (id: string) => void;
   setRoutineDays: (days: number) => void;
 };
-const defaultExercises: Exercise[] = [
-{
-  id: '1',
-  name: 'Bench Press',
-  muscleGroup: 'Chest',
-  iconName: 'Dumbbell',
-  days: [1]
-},
-{
-  id: '2',
-  name: 'Squat',
-  muscleGroup: 'Legs',
-  iconName: 'Activity',
-  days: [2]
-},
-{
-  id: '3',
-  name: 'Deadlift',
-  muscleGroup: 'Back',
-  iconName: 'Dumbbell',
-  days: [2]
-},
-{
-  id: '4',
-  name: 'Overhead Press',
-  muscleGroup: 'Shoulders',
-  iconName: 'ArrowUpCircle',
-  days: [1]
-},
-{
-  id: '5',
-  name: 'Barbell Row',
-  muscleGroup: 'Back',
-  iconName: 'Dumbbell',
-  days: [3]
-},
-{
-  id: '6',
-  name: 'Pull-ups',
-  muscleGroup: 'Back',
-  iconName: 'ArrowUp',
-  days: [3]
-},
-{
-  id: '7',
-  name: 'Bicep Curls',
-  muscleGroup: 'Arms',
-  iconName: 'Dumbbell',
-  days: [3]
-},
-{
-  id: '8',
-  name: 'Tricep Dips',
-  muscleGroup: 'Arms',
-  iconName: 'ArrowDown',
-  days: [1]
-},
-{
-  id: '9',
-  name: 'Leg Press',
-  muscleGroup: 'Legs',
-  iconName: 'Activity',
-  days: [2]
-},
-{
-  id: '10',
-  name: 'Lateral Raises',
-  muscleGroup: 'Shoulders',
-  iconName: 'MoveHorizontal',
-  days: [1, 3]
-},
-{
-  id: '11',
-  name: 'Romanian Deadlift',
-  muscleGroup: 'Legs',
-  iconName: 'Dumbbell',
-  days: [2]
-},
-{
-  id: '12',
-  name: 'Plank',
-  muscleGroup: 'Core',
-  iconName: 'Minus',
-  days: [1, 2, 3]
-}];
-
-const defaultUsers: User[] = [
-{
-  id: 'u1',
-  name: 'You',
-  color: 'bg-lime-400',
-  weight: 80,
-  height: 180,
-  bodyFat: 15
-},
-{
-  id: 'u2',
-  name: 'Bro',
-  color: 'bg-blue-400',
-  weight: 85,
-  height: 185,
-  bodyFat: 14
-}];
-
-// Generate some mock biometric data for the chart
-const generateMockBiometrics = () => {
-  const logs: BiometricLog[] = [];
-  const now = new Date();
-  for (let i = 8; i >= 0; i--) {
-    const date = new Date(now);
-    date.setDate(date.getDate() - i * 7);
-    logs.push({
-      id: `b_u1_${i}`,
-      userId: 'u1',
-      weight: 80 + Math.random() * 2 - 1,
-      date: date.toISOString()
-    });
-    logs.push({
-      id: `b_u2_${i}`,
-      userId: 'u2',
-      weight: 85 + Math.random() * 2 - 1,
-      date: date.toISOString()
-    });
-  }
-  return logs;
-};
-const initialState: GymState = {
-  users: defaultUsers,
-  activeUserId: 'u1',
-  exercises: defaultExercises,
+const emptyState: GymState = {
+  users: [],
+  activeUserId: '',
+  exercises: [],
   logs: [],
-  biometricLogs: generateMockBiometrics(),
+  biometricLogs: [],
   units: 'kg',
   routineDays: 3
 };
+
 const GymContext = createContext<GymContextType | undefined>(undefined);
+
+// Helper to map Supabase snake_case rows to our camelCase types
+const mapUser = (r: any): User => ({
+  id: r.id,
+  name: r.name,
+  color: r.color,
+  weight: Number(r.weight),
+  height: Number(r.height),
+  bodyFat: Number(r.body_fat),  muscleMass: Number(r.muscle_mass ?? 0),});
+const mapExercise = (r: any): Exercise => ({
+  id: r.id,
+  name: r.name,
+  muscleGroup: r.muscle_group,
+  iconName: r.icon_name,
+  days: r.days ?? [],
+});
+const mapLog = (r: any): Log => ({
+  id: r.id,
+  exerciseId: r.exercise_id,
+  userId: r.user_id,
+  weight: Number(r.weight),
+  reps: Number(r.reps),
+  sets: Number(r.sets ?? 1),
+  date: r.date,
+});
+const mapBiometricLog = (r: any): BiometricLog => ({
+  id: r.id,
+  userId: r.user_id,
+  weight: Number(r.weight),
+  bodyFat: Number(r.body_fat ?? 0),
+  muscleMass: Number(r.muscle_mass ?? 0),
+  date: r.date,
+});
+
 export const GymProvider: React.FC<{
   children: ReactNode;
 }> = ({ children }) => {
-  const [state, setState] = useState<GymState>(() => {
-    const saved = localStorage.getItem('gymbro_state');
-    if (saved) {
-      try {
-        return JSON.parse(saved);
-      } catch (e) {
-        console.error('Failed to parse state', e);
-      }
-    }
-    return initialState;
-  });
+  const [state, setState] = useState<GymState>(emptyState);
+  const [loading, setLoading] = useState(true);
+
+  // ---- Fetch everything from Supabase on mount ----
   useEffect(() => {
-    localStorage.setItem('gymbro_state', JSON.stringify(state));
-  }, [state]);
-  const setActiveUser = (id: string) => {
+    async function fetchAll() {
+      const [usersRes, exercisesRes, logsRes, bioRes, settingsRes] =
+        await Promise.all([
+          supabase.from('users').select('*'),
+          supabase.from('exercises').select('*'),
+          supabase.from('logs').select('*').order('date', { ascending: true }),
+          supabase.from('biometric_logs').select('*').order('date', { ascending: true }),
+          supabase.from('settings').select('*').single(),
+        ]);
+
+      setState({
+        users: (usersRes.data ?? []).map(mapUser),
+        exercises: (exercisesRes.data ?? []).map(mapExercise),
+        logs: (logsRes.data ?? []).map(mapLog),
+        biometricLogs: (bioRes.data ?? []).map(mapBiometricLog),
+        activeUserId: settingsRes.data?.active_user_id ?? '',
+        units: settingsRes.data?.units ?? 'kg',
+        routineDays: settingsRes.data?.routine_days ?? 3,
+      });
+      setLoading(false);
+    }
+    fetchAll();
+  }, []);
+  // ---- Mutations that persist to Supabase ----
+  const setActiveUser = async (id: string) => {
+    setState((prev) => ({ ...prev, activeUserId: id }));
+    await supabase.from('settings').update({ active_user_id: id }).eq('id', 1);
+  };
+
+  const updateUser = async (id: string, data: Partial<User>) => {
     setState((prev) => ({
       ...prev,
-      activeUserId: id
+      users: prev.users.map((u) => (u.id === id ? { ...u, ...data } : u)),
     }));
+    const mapped: Record<string, unknown> = {};
+    if (data.weight !== undefined) mapped.weight = data.weight;
+    if (data.height !== undefined) mapped.height = data.height;
+    if (data.bodyFat !== undefined) mapped.body_fat = data.bodyFat;
+    if (data.muscleMass !== undefined) mapped.muscle_mass = data.muscleMass;
+    if (data.name !== undefined) mapped.name = data.name;
+    if (data.color !== undefined) mapped.color = data.color;
+    await supabase.from('users').update(mapped).eq('id', id);
   };
-  const updateUser = (id: string, data: Partial<User>) => {
+
+  const addLog = async (log: Omit<Log, 'id' | 'date'>) => {
+    const { data, error } = await supabase
+      .from('logs')
+      .insert({
+        exercise_id: log.exerciseId,
+        user_id: log.userId,
+        weight: log.weight,
+        reps: log.reps,
+        sets: log.sets,
+      })
+      .select()
+      .single();
+    if (!error && data) {
+      setState((prev) => ({ ...prev, logs: [...prev.logs, mapLog(data)] }));
+    }
+  };
+
+  const deleteLog = async (id: string) => {
+    setState((prev) => ({ ...prev, logs: prev.logs.filter((l) => l.id !== id) }));
+    await supabase.from('logs').delete().eq('id', id);
+  };
+
+  const addBiometricLog = async (log: Omit<BiometricLog, 'id' | 'date'>) => {
+    const { data, error } = await supabase
+      .from('biometric_logs')
+      .insert({ user_id: log.userId, weight: log.weight, body_fat: log.bodyFat, muscle_mass: log.muscleMass })
+      .select()
+      .single();
+    if (!error && data) {
+      setState((prev) => ({
+        ...prev,
+        biometricLogs: [...prev.biometricLogs, mapBiometricLog(data)],
+      }));
+    }
+  };
+
+  const setUnits = async (units: 'kg' | 'lbs') => {
+    setState((prev) => ({ ...prev, units }));
+    await supabase.from('settings').update({ units }).eq('id', 1);
+  };
+
+  const resetData = async () => {
+    // Delete all logs, keep users & exercises
+    await Promise.all([
+      supabase.from('logs').delete().neq('id', ''),
+      supabase.from('biometric_logs').delete().neq('id', ''),
+    ]);
+    setState((prev) => ({ ...prev, logs: [], biometricLogs: [] }));
+  };
+
+  const addExercise = async (exercise: Omit<Exercise, 'id'>) => {
+    const { data, error } = await supabase
+      .from('exercises')
+      .insert({
+        name: exercise.name,
+        muscle_group: exercise.muscleGroup,
+        icon_name: exercise.iconName,
+        days: exercise.days,
+      })
+      .select()
+      .single();
+    if (!error && data) {
+      setState((prev) => ({
+        ...prev,
+        exercises: [...prev.exercises, mapExercise(data)],
+      }));
+    }
+  };
+
+  const updateExercise = async (id: string, data: Partial<Omit<Exercise, 'id'>>) => {
     setState((prev) => ({
       ...prev,
-      users: prev.users.map((u) =>
-      u.id === id ?
-      {
-        ...u,
-        ...data
-      } :
-      u
-      )
+      exercises: prev.exercises.map((ex) => ex.id === id ? { ...ex, ...data } : ex),
     }));
+    const mapped: Record<string, unknown> = {};
+    if (data.name !== undefined) mapped.name = data.name;
+    if (data.muscleGroup !== undefined) mapped.muscle_group = data.muscleGroup;
+    if (data.days !== undefined) mapped.days = data.days;
+    await supabase.from('exercises').update(mapped).eq('id', id);
   };
-  const addLog = (log: Omit<Log, 'id' | 'date'>) => {
-    const newLog: Log = {
-      ...log,
-      id: Math.random().toString(36).substr(2, 9),
-      date: new Date().toISOString()
-    };
+
+  const deleteExercise = async (id: string) => {
     setState((prev) => ({
       ...prev,
-      logs: [...prev.logs, newLog]
+      exercises: prev.exercises.filter((ex) => ex.id !== id),
+      logs: prev.logs.filter((l) => l.exerciseId !== id),
     }));
+    await supabase.from('logs').delete().eq('exercise_id', id);
+    await supabase.from('exercises').delete().eq('id', id);
   };
-  const addBiometricLog = (log: Omit<BiometricLog, 'id' | 'date'>) => {
-    const newLog: BiometricLog = {
-      ...log,
-      id: Math.random().toString(36).substr(2, 9),
-      date: new Date().toISOString()
-    };
-    setState((prev) => ({
-      ...prev,
-      biometricLogs: [...prev.biometricLogs, newLog]
-    }));
-  };
-  const setUnits = (units: 'kg' | 'lbs') => {
-    setState((prev) => ({
-      ...prev,
-      units
-    }));
-  };
-  const resetData = () => {
-    setState(initialState);
-  };
-  const addExercise = (exercise: Omit<Exercise, 'id'>) => {
-    const newExercise: Exercise = {
-      ...exercise,
-      id: Math.random().toString(36).substr(2, 9)
-    };
-    setState((prev) => ({
-      ...prev,
-      exercises: [...prev.exercises, newExercise]
-    }));
-  };
-  const setRoutineDays = (routineDays: number) => {
+
+  const setRoutineDays = async (routineDays: number) => {
     setState((prev) => ({
       ...prev,
       routineDays,
-      // Clean up exercises that reference days beyond the new limit
       exercises: prev.exercises.map((ex) => ({
         ...ex,
-        days: ex.days.filter((d) => d <= routineDays)
-      }))
+        days: ex.days.filter((d) => d <= routineDays),
+      })),
     }));
+    await supabase.from('settings').update({ routine_days: routineDays }).eq('id', 1);
+    // Also clean up exercise days in the DB
+    const { data: exercises } = await supabase.from('exercises').select('id, days');
+    if (exercises) {
+      await Promise.all(
+        exercises.map((ex) =>
+          supabase
+            .from('exercises')
+            .update({ days: (ex.days as number[]).filter((d) => d <= routineDays) })
+            .eq('id', ex.id)
+        )
+      );
+    }
   };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-zinc-950">
+        <p className="text-zinc-400 text-lg">Loading…</p>
+      </div>
+    );
+  }
   return (
     <GymContext.Provider
       value={{
@@ -279,10 +283,13 @@ export const GymProvider: React.FC<{
         setActiveUser,
         updateUser,
         addLog,
+        deleteLog,
         addBiometricLog,
         setUnits,
         resetData,
         addExercise,
+        updateExercise,
+        deleteExercise,
         setRoutineDays
       }}>
       

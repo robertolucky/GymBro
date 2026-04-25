@@ -20,18 +20,58 @@ export function Exercises() {
   ...Array.from(new Set(state.exercises.map((e) => e.muscleGroup)))];
 
   const filteredExercises = useMemo(() => {
-    return state.exercises.filter((ex) => {
-      const matchesSearch = ex.name.
-      toLowerCase().
-      includes(searchQuery.toLowerCase());
-      const matchesFilter =
-      activeFilter === 'All' || ex.muscleGroup === activeFilter;
-      const matchesDay =
-      activeDayFilter === null ||
-      ex.days && ex.days.includes(activeDayFilter);
+    // All workout session dates for the active user (newest first)
+    const sessionDates = Array.from(
+      new Set(
+        state.logs
+          .filter((l) => l.userId === state.activeUserId)
+          .map((l) => l.date.split('T')[0])
+      )
+    ).sort((a, b) => b.localeCompare(a));
+
+    // For each exercise: how many sessions ago was it last done?
+    const sessionsMissed = (exerciseId: string): number => {
+      const lastLogDate = state.logs
+        .filter((l) => l.exerciseId === exerciseId && l.userId === state.activeUserId)
+        .map((l) => l.date.split('T')[0])
+        .sort((a, b) => b.localeCompare(a))[0];
+      if (!lastLogDate) return sessionDates.length; // never done
+      const idx = sessionDates.indexOf(lastLogDate);
+      return idx === -1 ? sessionDates.length : idx;
+    };
+
+    const filtered = state.exercises.filter((ex) => {
+      const matchesSearch = ex.name.toLowerCase().includes(searchQuery.toLowerCase());
+      const matchesFilter = activeFilter === 'All' || ex.muscleGroup === activeFilter;
+      const matchesDay = activeDayFilter === null || (ex.days && ex.days.includes(activeDayFilter));
       return matchesSearch && matchesFilter && matchesDay;
     });
-  }, [state.exercises, searchQuery, activeFilter, activeDayFilter]);
+
+    // In All Days view sort by staleness descending (most overdue first)
+    if (activeDayFilter === null && activeFilter === 'All' && !searchQuery) {
+      return [...filtered].sort((a, b) => sessionsMissed(b.id) - sessionsMissed(a.id));
+    }
+    return filtered;
+  }, [state.exercises, state.logs, state.activeUserId, searchQuery, activeFilter, activeDayFilter]);
+  // Compute sessionsMissed per exercise to pass to card
+  const sessionDates = useMemo(() => Array.from(
+    new Set(
+      state.logs
+        .filter((l) => l.userId === state.activeUserId)
+        .map((l) => l.date.split('T')[0])
+    )
+  ).sort((a, b) => b.localeCompare(a)), [state.logs, state.activeUserId]);
+
+  const getSessionsMissed = (exerciseId: string): number => {
+    const lastLogDate = state.logs
+      .filter((l) => l.exerciseId === exerciseId && l.userId === state.activeUserId)
+      .map((l) => l.date.split('T')[0])
+      .sort((a, b) => b.localeCompare(a))[0];
+    if (!lastLogDate) return sessionDates.length;
+    const idx = sessionDates.indexOf(lastLogDate);
+    return idx === -1 ? sessionDates.length : idx;
+  };
+
   const toggleUser = () => {
     const currentIndex = state.users.findIndex(
       (u) => u.id === state.activeUserId
@@ -133,6 +173,7 @@ export function Exercises() {
         <ExerciseCard
           key={exercise.id}
           exercise={exercise}
+          sessionsMissed={getSessionsMissed(exercise.id)}
           onClick={() => setSelectedExercise(exercise)} />
 
         )}

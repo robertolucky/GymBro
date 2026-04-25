@@ -1,6 +1,5 @@
-import React from 'react';
 import { NavLink } from 'react-router-dom';
-import { Dumbbell, BarChart3, Settings } from 'lucide-react';
+import { Dumbbell, BarChart3, Settings, Timer } from 'lucide-react';
 import { motion } from 'framer-motion';
 export function BottomNav() {
   const navItems = [
@@ -13,6 +12,11 @@ export function BottomNav() {
     path: '/stats',
     icon: BarChart3,
     label: 'Stats'
+  },
+  {
+    path: '/abs',
+    icon: Timer,
+    label: 'Abs'
   },
   {
     path: '/settings',

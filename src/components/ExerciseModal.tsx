@@ -1,28 +1,56 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Users } from 'lucide-react';
+import { X, Users, Trash2 } from 'lucide-react';
 import { useGym, Exercise } from '../context/GymContext';
 type ExerciseModalProps = {
   exercise: Exercise | null;
   onClose: () => void;
 };
 export function ExerciseModal({ exercise, onClose }: ExerciseModalProps) {
-  const { state, addLog } = useGym();
+  const { state, addLog, deleteExercise, updateExercise } = useGym();
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [editingDays, setEditingDays] = useState(false);
   const [weight, setWeight] = useState('');
   const [reps, setReps] = useState('');
+  const [sets, setSets] = useState('3');
   const [logTarget, setLogTarget] = useState<'both' | string>('both');
+
+  useEffect(() => { setConfirmDelete(false); setEditingDays(false); }, [exercise]);
+
+  const toggleDay = (day: number) => {
+    if (!exercise) return;
+    const current = exercise.days ?? [];
+    const next = current.includes(day)
+      ? current.filter((d) => d !== day)
+      : [...current, day].sort();
+    updateExercise(exercise.id, { days: next });
+  };
+
+  // Pre-fill with the last logged values whenever a new exercise is opened
+  useEffect(() => {
+    if (!exercise) return;
+    const userId = logTarget === 'both' ? state.activeUserId : logTarget;
+    const lastLog = state.logs
+      .filter((l) => l.exerciseId === exercise.id && l.userId === userId)
+      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0];
+    setWeight(lastLog ? String(lastLog.weight) : '');
+    setReps(lastLog ? String(lastLog.reps) : '');
+    setSets(lastLog ? String(lastLog.sets) : '3');
+  }, [exercise]);
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!exercise || !weight || !reps) return;
     const w = parseFloat(weight);
     const r = parseInt(reps, 10);
+    const s = parseInt(sets, 10);
     if (logTarget === 'both') {
       state.users.forEach((user) => {
         addLog({
           exerciseId: exercise.id,
           userId: user.id,
           weight: w,
-          reps: r
+          reps: r,
+          sets: s
         });
       });
     } else {
@@ -30,11 +58,13 @@ export function ExerciseModal({ exercise, onClose }: ExerciseModalProps) {
         exerciseId: exercise.id,
         userId: logTarget,
         weight: w,
-        reps: r
+        reps: r,
+        sets: s
       });
     }
     setWeight('');
     setReps('');
+    setSets('3');
     setLogTarget('both');
     onClose();
   };
@@ -86,12 +116,38 @@ export function ExerciseModal({ exercise, onClose }: ExerciseModalProps) {
                     Logging for {getTargetLabel()}
                   </p>
                 </div>
-                <button
-                onClick={onClose}
-                className="p-2 bg-zinc-800 rounded-full text-zinc-400 hover:text-white transition-colors">
-                
-                  <X className="w-5 h-5" />
-                </button>
+                <div className="flex items-center gap-2">
+                  {confirmDelete ? (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => { deleteExercise(exercise.id); onClose(); }}
+                        className="px-3 py-1.5 bg-rose-500 text-white text-xs font-bold rounded-lg hover:bg-rose-600 transition-colors">
+                        Confirm delete
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setConfirmDelete(false)}
+                        className="p-2 bg-zinc-800 rounded-full text-zinc-400 hover:text-white transition-colors">
+                        <X className="w-4 h-4" />
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => setConfirmDelete(true)}
+                        className="p-2 bg-zinc-800 rounded-full text-zinc-400 hover:text-rose-400 transition-colors">
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={onClose}
+                        className="p-2 bg-zinc-800 rounded-full text-zinc-400 hover:text-white transition-colors">
+                        <X className="w-5 h-5" />
+                      </button>
+                    </>
+                  )}
+                </div>
               </div>
 
               <div className="flex gap-2 mb-5">
@@ -116,8 +172,36 @@ export function ExerciseModal({ exercise, onClose }: ExerciseModalProps) {
               )}
               </div>
 
+              {/* Day assignment */}
+              <div className="mb-5">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-medium text-zinc-500 uppercase tracking-wider">Training Days</span>
+                  <button
+                    type="button"
+                    onClick={() => setEditingDays((v) => !v)}
+                    className="text-xs text-lime-400 hover:text-lime-300 transition-colors">
+                    {editingDays ? 'Done' : 'Edit'}
+                  </button>
+                </div>
+                <div className="flex gap-2">
+                  {Array.from({ length: state.routineDays }, (_, i) => i + 1).map((day) => {
+                    const active = exercise.days?.includes(day);
+                    return (
+                      <button
+                        key={day}
+                        type="button"
+                        disabled={!editingDays}
+                        onClick={() => toggleDay(day)}
+                        className={`px-3 py-1.5 rounded-lg text-sm font-bold transition-colors ${active ? 'bg-lime-400 text-zinc-950' : 'bg-zinc-800 text-zinc-500'} ${editingDays ? 'cursor-pointer' : 'cursor-default'}`}>
+                        D{day}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
               <form onSubmit={handleSubmit} className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-3 gap-4">
                   <div>
                     <label className="block text-xs font-medium text-zinc-500 mb-1 uppercase tracking-wider">
                       Weight ({state.units})
@@ -131,7 +215,6 @@ export function ExerciseModal({ exercise, onClose }: ExerciseModalProps) {
                     placeholder="0.0"
                     required
                     autoFocus />
-                  
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-zinc-500 mb-1 uppercase tracking-wider">
@@ -144,7 +227,18 @@ export function ExerciseModal({ exercise, onClose }: ExerciseModalProps) {
                     className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-lime-400 focus:ring-1 focus:ring-lime-400 transition-all"
                     placeholder="0"
                     required />
-                  
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-zinc-500 mb-1 uppercase tracking-wider">
+                      Sets
+                    </label>
+                    <input
+                    type="number"
+                    value={sets}
+                    onChange={(e) => setSets(e.target.value)}
+                    className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-lime-400 focus:ring-1 focus:ring-lime-400 transition-all"
+                    placeholder="3"
+                    required />
                   </div>
                 </div>
 
