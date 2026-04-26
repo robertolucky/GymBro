@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Users, Trash2 } from 'lucide-react';
+import { X, Users, Trash2, TrendingUp } from 'lucide-react';
 import { useGym, Exercise } from '../context/GymContext';
+import { getOverloadSuggestion } from '../utils/overload';
 type ExerciseModalProps = {
   exercise: Exercise | null;
   onClose: () => void;
@@ -149,6 +150,22 @@ export function ExerciseModal({ exercise, onClose }: ExerciseModalProps) {
                   )}
                 </div>
               </div>
+
+              {/* Progressive overload suggestion */}
+              {(() => {
+                const userId = logTarget === 'both' ? state.activeUserId : logTarget;
+                const suggestion = getOverloadSuggestion(exercise.id, userId, state.logs, state.units);
+                if (!suggestion) return null;
+                return (
+                  <div className="flex items-start gap-3 bg-lime-400/10 border border-lime-400/30 rounded-xl px-4 py-3 mb-5">
+                    <TrendingUp className="w-4 h-4 text-lime-400 flex-shrink-0 mt-0.5" />
+                    <div>
+                      <p className="text-lime-400 text-xs font-bold uppercase tracking-wider mb-0.5">Ready to progress</p>
+                      <p className="text-white text-sm">{suggestion.message}</p>
+                    </div>
+                  </div>
+                );
+              })()}
 
               <div className="flex gap-2 mb-5">
                 <button

@@ -5,6 +5,7 @@ import { useGym, Exercise } from '../context/GymContext';
 import { ExerciseCard } from '../components/ExerciseCard';
 import { ExerciseModal } from '../components/ExerciseModal';
 import { AddExerciseModal } from '../components/AddExerciseModal';
+import { getOverloadSuggestion } from '../utils/overload';
 export function Exercises() {
   const { state, setActiveUser } = useGym();
   const [searchQuery, setSearchQuery] = useState('');
@@ -169,14 +170,17 @@ export function Exercises() {
       </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-        {filteredExercises.map((exercise) =>
-        <ExerciseCard
-          key={exercise.id}
-          exercise={exercise}
-          sessionsMissed={getSessionsMissed(exercise.id)}
-          onClick={() => setSelectedExercise(exercise)} />
-
-        )}
+        {filteredExercises.map((exercise) => {
+          const suggestion = getOverloadSuggestion(exercise.id, state.activeUserId, state.logs, state.units);
+          return (
+            <ExerciseCard
+              key={exercise.id}
+              exercise={exercise}
+              sessionsMissed={getSessionsMissed(exercise.id)}
+              suggestion={suggestion}
+              onClick={() => setSelectedExercise(exercise)} />
+          );
+        })}
       </div>
 
       {filteredExercises.length === 0 &&

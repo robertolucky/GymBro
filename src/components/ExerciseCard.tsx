@@ -1,13 +1,15 @@
-import { Dumbbell } from 'lucide-react';
+import { Dumbbell, TrendingUp } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { Exercise, useGym } from '../context/GymContext';
+import { OverloadSuggestion } from '../utils/overload';
 
 type ExerciseCardProps = {
   exercise: Exercise;
   sessionsMissed: number;
+  suggestion: OverloadSuggestion | null;
   onClick: () => void;
 };
-export function ExerciseCard({ exercise, sessionsMissed, onClick }: ExerciseCardProps) {
+export function ExerciseCard({ exercise, sessionsMissed, suggestion, onClick }: ExerciseCardProps) {
   const { state } = useGym();
 
   // Gauge: 0 sessions missed = full green, 3+ = full red
@@ -89,6 +91,14 @@ export function ExerciseCard({ exercise, sessionsMissed, onClick }: ExerciseCard
             <span className="text-zinc-600 text-sm">No logs yet</span>
           );
         })()}
+        {suggestion && (
+          <div className="flex items-center gap-1 mt-2">
+            <TrendingUp className="w-3 h-3 text-lime-400 flex-shrink-0" />
+            <span className="text-lime-400 text-[10px] font-bold">
+              Try {suggestion.suggestedWeight}{state.units}
+            </span>
+          </div>
+        )}
       </div>
     </motion.div>);
 
