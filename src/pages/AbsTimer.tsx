@@ -4,60 +4,88 @@ import { Play, Pause, RotateCcw, ChevronUp, ChevronDown } from 'lucide-react';
 
 type Phase = 'idle' | 'rest' | 'exercise' | 'done';
 
-// Generates sounds using the Web Audio API — no audio files needed
-function playBeep(type: 'rest' | 'exercise' | 'tick' | 'done') {
+// Synthesises a boxing ring bell strike using inharmonic sine partials
+function playBell(type: 'rest' | 'exercise' | 'tick' | 'done') {
   const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
 
-  if (type === 'tick') {
-    // Short sharp click for countdown
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-    osc.frequency.value = 1200;
-    gain.gain.setValueAtTime(0.25, ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.08);
-    osc.start(ctx.currentTime);
-    osc.stop(ctx.currentTime + 0.08);
-    return;
-  }
-
-  if (type === 'done') {
-    // Triumphant fanfare: ascending arpeggio + long sustain chord
-    const notes = [
-      { freq: 523, t: 0,    dur: 0.25 },
-      { freq: 659, t: 0.18, dur: 0.25 },
-      { freq: 784, t: 0.36, dur: 0.25 },
-      { freq: 1047,t: 0.54, dur: 0.6  },
-      // chord swell
-      { freq: 784, t: 0.54, dur: 0.6  },
-      { freq: 659, t: 0.54, dur: 0.6  },
+  // Core bell strike: inharmonic partials give the metallic "clang" quality
+  const strike = (startTime: number, vol = 1.0) => {
+    const partials = [
+      { freq: 1047, gain: 0.3, decay: 2.2 }, // fundamental ~C6
+      { freq: 1319, gain: 0.1, decay: 2.6 }, // E6 — major third
+      { freq: 4186, gain: 0.5, decay: 1.5 }, // slightly detuned 2nd
+      { freq: 8376, gain: 0.10, decay: 0.35 }, // high transient click
+      { freq: 1047, gain: 0.18, decay: 1.8 }, // detune for richness
     ];
-    notes.forEach(({ freq, t, dur }) => {
-      const o = ctx.createOscillator();
+    partials.forEach(({ freq, gain, decay }) => {
+      const osc = ctx.createOscillator();
       const g = ctx.createGain();
-      o.type = 'sine';
-      o.connect(g);
+      osc.type = 'sine';
+      osc.connect(g);
       g.connect(ctx.destination);
-      o.frequency.value = freq;
-      g.gain.setValueAtTime(0, ctx.currentTime + t);
-      g.gain.linearRampToValueAtTime(0.25, ctx.currentTime + t + 0.04);
-      g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + t + dur);
-      o.start(ctx.currentTime + t);
-      o.stop(ctx.currentTime + t + dur + 0.05);
+      osc.frequency.value = freq;
+      g.gain.setValueAtTime(gain * vol, startTime);
+      g.gain.exponentialRampToValueAtTime(0.001, startTime + decay);
+      osc.start(startTime);
+      osc.stop(startTime + decay + 0.05);
+    });
+  };
+
+  if (type === 'tick') {
+    // Soft tap: same bell, quieter & shorter
+    const partials = [
+      { freq: 1047, gain: 0.18, decay: 0.4 },
+      { freq: 2094, gain: 0.09, decay: 0.25 },
+      { freq: 4186, gain: 0.06, decay: 0.1 },
+    ];
+    partials.forEach(({ freq, gain, decay }) => {
+      const osc = ctx.createOscillator();
+      const g = ctx.createGain();
+      osc.type = 'sine';
+      osc.connect(g);
+      g.connect(ctx.destination);
+      osc.frequency.value = freq;
+      g.gain.setValueAtTime(gain, ctx.currentTime);
+      g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + decay);
+      osc.start(ctx.currentTime);
+      osc.stop(ctx.currentTime + decay + 0.05);
     });
     return;
   }
 
-  const osc = ctx.createOscillator();
-  const gain = ctx.createGain();
-  osc.connect(gain);
-  gain.connect(ctx.destination);
-  osc.frequency.value = type === 'exercise' ? 880 : 440;
-  gain.gain.setValueAtTime(0.4, ctx.currentTime);
-  gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.3);
-  osc.start(ctx.currentTime);
-  osc.stop(ctx.currentTime + 0.3);
+  if (type === 'done') {
+    // Warm C major chime — soft attack, long decay, one octave lower than before
+    const chime = (startTime: number, vol = 1.0) => {
+      const partials = [
+        { freq: 1047, gain: 0.40, decay: 3.2 }, // C6 — warm fundamental
+        { freq: 1319, gain: 0.22, decay: 2.6 }, // E6 — major third
+        { freq: 1568, gain: 0.16, decay: 2.0 }, // G6 — perfect fifth
+        { freq: 2093, gain: 0.10, decay: 1.2 }, // C7 — gentle octave shimmer
+      ];
+      partials.forEach(({ freq, gain, decay }) => {
+        const osc = ctx.createOscillator();
+        const g = ctx.createGain();
+        osc.type = 'sine';
+        osc.connect(g);
+        g.connect(ctx.destination);
+        osc.frequency.value = freq;
+        // Soft swell instead of hard click
+        g.gain.setValueAtTime(0, startTime);
+        g.gain.linearRampToValueAtTime(gain * vol, startTime + 0.015);
+        g.gain.exponentialRampToValueAtTime(0.001, startTime + decay);
+        osc.start(startTime);
+        osc.stop(startTime + decay + 0.05);
+      });
+    };
+    // ding — ding — DING (slight pause before last for drama)
+    chime(ctx.currentTime,        0.65);
+    chime(ctx.currentTime + 0.50, 0.65);
+    chime(ctx.currentTime + 1.10, 1.0);
+    return;
+  }
+
+  // 'exercise' and 'rest' — single full bell ring
+  strike(ctx.currentTime);
 }
 
 export function AbsTimer() {
@@ -121,7 +149,7 @@ export function AbsTimer() {
   // Countdown tick for last 3 seconds of each phase
   useEffect(() => {
     if (running && (phase === 'exercise' || phase === 'rest') && timeLeft > 0 && timeLeft <= 3) {
-      playBeep('tick');
+      playBell('tick');
     }
   }, [timeLeft, running, phase]);
 
@@ -130,16 +158,16 @@ export function AbsTimer() {
     if (!running || timeLeft !== 0) return;
 
     if (phase === 'rest') {
-      playBeep('exercise');
+      playBell('exercise');
       setPhase('exercise');
       setTimeLeft(exerciseDuration);
     } else if (phase === 'exercise') {
       if (currentRep >= totalReps) {
-        playBeep('done');
+        playBell('done');
         setPhase('done');
         setRunning(false);
       } else {
-        playBeep('rest');
+        playBell('rest');
         setPhase('rest');
         setCurrentRep((r) => r + 1);
         setTimeLeft(restDuration);
